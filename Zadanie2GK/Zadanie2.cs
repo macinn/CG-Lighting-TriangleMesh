@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Media.Media3D;
@@ -63,7 +65,8 @@ namespace Zadanie2GK
         {
             e.Graphics.FillRectangle(new SolidBrush(Color.Black), (int)lightPos.X, (int)lightPos.Y, 10, 10);
             List<(double r, double g, double b)> colors = calculator.CalculateColors(lightPos);
-            drawer.DrawPolygons(e, triangles, colors);
+            //drawer.DrawPolygons(e, triangles, colors);
+            drawer.DrawMultiThread(e, triangles, colors);
 
         }
 
@@ -237,21 +240,21 @@ namespace Zadanie2GK
             for(int i = 0; i <= numberSegments; i++)
                 for(int  j = 0; j <= numberSegments; j++)
                 {
-                    //Vector3D Px;
-                    //if(i == numberSegments)
-                    //    Px = points3[i, j] - points3[i - 1, j];
-                    //else
-                    //    Px = points3[i + 1, j] - points3[i,j];
-                    //Vector3D Py;
-                    //if(j == numberSegments)
-                    //    Py = points3[i, j] - points3[i, j-1];
-                    //else
-                    //    Py = points3[i, j + 1] - points3[i,j];
+                    Vector3D Px;
+                    if (i == numberSegments)
+                        Px = points3[i, j] - points3[i - 1, j];
+                    else
+                        Px = points3[i + 1, j] - points3[i, j];
+                    Vector3D Py;
+                    if (j == numberSegments)
+                        Py = points3[i, j] - points3[i, j - 1];
+                    else
+                        Py = points3[i, j + 1] - points3[i, j];
 
-                    //normals[i,j] = Vector3D.CrossProduct(Px, Py);
+                    normals[i, j] = Vector3D.CrossProduct(Px, Py);
 
                     // sphere normal
-                    normals[i, j] = points3[i , j] - new Vector3D(0.5, 0.5, 0);
+                    //normals[i, j] = points3[i , j] - new Vector3D(0.5, 0.5, 0);
                 }
 
                 return normals;
@@ -310,6 +313,10 @@ namespace Zadanie2GK
     public class Drawer
     {
         int height, width;
+
+        static BlockingCollection<(int x1, int x2, int y, Color)> linesQ = new BlockingCollection<(int x1, int x2, int y, Color)>(); 
+        static object __lockObj = new object();
+        static int polygonsNumber;
         public Drawer(int width, int height)
         {
             this.height = height;
@@ -321,6 +328,7 @@ namespace Zadanie2GK
                 DrawPolygon(e, polygons[i], colors[i]);
 
         }
+        
         public void DrawPolygon(PaintEventArgs e, Point[] P, (double r, double g, double b) color)
         {
             int N = P.Length;
@@ -383,6 +391,91 @@ namespace Zadanie2GK
             return a.X + (mx * (y - a.Y));
         }
 
+        public void DrawMultiThread(PaintEventArgs e, IList<Point[]> polygons, List<(double r, double g, double b)> colors)
+        {
+            polygonsNumber = polygons.Count;
+            Thread drawer = new Thread(() => DrawLines(e));
+            drawer.Start();
+            for (int i = 0; i < polygons.Count; i++)
+            {
+                //Thread t = new Thread(() => AddLinesToQ(e, polygons[i], colors[i]));
+                //t.Start();
+                //ThreadPool.QueueUserWorkItem(new WaitCallback( (object state) => AddLinesToQ(e, polygons[i], colors[i])) );
+                AddLinesToQ(e, polygons[i], colors[i]);
+            }            
+            drawer.Join();
+            linesQ = new BlockingCollection<(int x1, int x2, int y, Color)>();
+        }
+        static void AddLinesToQ(PaintEventArgs e, Point[] P, (double r, double g, double b) color)
+        {
+            int N = P.Length;
+            HashSet<(Point a, Point b)> AET = new HashSet<(Point a, Point b)>();
+            Color col = Color.FromArgb(255, (int)(color.r * 255), (int)(color.g * 255), (int)(color.b * 255));
+            int[] ind = Enumerable.Range(0, N).OrderBy((int i) => P[i].Y).ToArray();
+            int ymin = P[ind[0]].Y;
+            int ymax = P[ind[N - 1]].Y;
+            int k = 0;
+
+            for (int i = 0; i < N; i++)
+                if (P[i].Y == P[(i + 1) % N].Y)
+                    linesQ.Add(((int)P[i].X, (int)P[(i + 1) % N].X, P[i].Y, col));
+
+            for (int y = ymin; y <= ymax; y++)
+            {
+                while (P[ind[k]].Y == y - 1)
+                {
+                    Point curr = P[ind[k]];
+
+                    Point prev = P[(ind[k] - 1 + N) % N];
+                    if (prev.Y > curr.Y)
+                        AET.Add((prev, curr));
+                    else
+                        AET.Remove((prev, curr));
+
+                    Point next = P[(ind[k] + 1) % N];
+                    if (next.Y > curr.Y)
+                        AET.Add((curr, next));
+                    else
+                        AET.Remove((curr, next));
+                    k++;
+                }
+
+                IOrderedEnumerable<double> sortedXs = AET.Select(s => XAt(s.a, s.b, y)).OrderBy(x => x);
+
+                int i = 0;
+                double x1 = 0.0;
+                double x2 = 0.0;
+                using (var iter = sortedXs.GetEnumerator())
+                {
+                    while (iter.MoveNext())
+                    {
+                        if (i % 2 == 0)
+                            x1 = iter.Current;
+                        else if (i % 2 == 1)
+                        {
+                            x2 = iter.Current;
+                            linesQ.Add(((int)x1, (int)x2, y, col));
+                        }
+                        i++;
+                    }
+                }
+
+            }
+            lock(__lockObj)
+            {
+                polygonsNumber--;
+                if(polygonsNumber == 0) linesQ.CompleteAdding();
+            }
+        }
+
+        static void DrawLines(PaintEventArgs e)
+        {
+            while (linesQ.TryTake(out (int x1, int x2, int y, Color c) line))
+            {
+                Pen pen = new Pen(line.c);
+                e.Graphics.DrawLine(pen, line.x1, line.y, line.x2, line.y);
+            }           
+        }
         // wzór z ASD2
         public static bool ChckInstersect(Point a, Point b, Point c, Point d)
         {
