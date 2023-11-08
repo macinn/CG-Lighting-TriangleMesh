@@ -4,18 +4,22 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Drawing.Printing;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Media.Media3D;
+using System.Xml.Linq;
+using static System.Net.Mime.MediaTypeNames;
 
 // TODO:
-// -suwaki do współcznników kd, ks, m
-// -źródło światła wspolrzedna z
-// -domyślny kolor obiektu
+// -źródło światła wspolrzedna z, radius, kolor obiaktu, swiatla do wybrania
+
 // -modyfikacja wektora normalnego na podstawie wczytanej mapy wektorów normalnych
 
 
@@ -25,13 +29,13 @@ namespace Zadanie2GK
     {
         readonly Drawer drawer;
         readonly Calculator calculator;
-        int frame = 0;
+        uint frame = 0;
         Vector3D lightPos = new Vector3D(1.5, 0.5, 5);
-        readonly double lightRadius = 1.0;
+        readonly double lightRadius = 10.0;
         readonly Stopwatch stopWatch = new Stopwatch();
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
-        static bool drawingOnA = true;
         double lastFPS = 0;
+        byte[] buffer;
         public Zadanie2()
         {
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -39,27 +43,31 @@ namespace Zadanie2GK
 
             drawer = new Drawer(Canvas.Width, Canvas.Height);
             calculator = new Calculator();
-            calculator.SetPrecision(5);
-
+            calculator.SetPrecision(30);
 
             timer.Interval = 40; // 25 FPS
             timer.Tick += new EventHandler(RenderFrame);
             timer.Start();
-        }
+        }        
         private void RenderFrame(object sender, EventArgs e)
         {
             UpdateLight();
             
             stopWatch.Restart();
-            //List<(double r, double g, double b)> colors = calculator.CalculateColors(lightPos);
+
+            //// https://stackoverflow.com/questions/21497537/allow-an-image-to-be-accessed-by-several-threads
             Bitmap bmp = new Bitmap(Canvas.Width, Canvas.Height);
-            using (var gfx = Graphics.FromImage(bmp))
-            {
-                drawer.DrawPolygons(gfx, calculator, lightPos);
-            }
+            var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
+            var data = bmp.LockBits(rect, ImageLockMode.ReadWrite, bmp.PixelFormat);
+            var depth = Bitmap.GetPixelFormatSize(data.PixelFormat) / 8; //bytes per pixel 
+            if(buffer == null)
+                buffer = new byte[Canvas.Width * data.Height * depth];
+            drawer.DrawPolygons(buffer, depth, calculator, lightPos);
+            Marshal.Copy(buffer, 0, data.Scan0, buffer.Length);
+            bmp.UnlockBits(data);
             Canvas.Image = bmp;
-            Canvas.Invalidate();
-            //drawer.DrawMultiThread(e, calculator, lightPos);
+            //Canvas.Invalidate();
+
             stopWatch.Stop();
             lastFPS += 1000.0 / stopWatch.ElapsedMilliseconds;
             lastFPS /= 2;
@@ -79,6 +87,7 @@ namespace Zadanie2GK
         {
             calculator.SetM((int)MBox.Value);
         }
+
     }
     public class Canvas : Panel
     {
@@ -97,6 +106,7 @@ namespace Zadanie2GK
         (double r, double g, double b) objectColor = (1, 0, 0);
         Vector3D[,] cachedPoints;
         Vector3D[,] cachedNormals;
+        static Vector3D V = new Vector3D(0, 0, 1);
         List<Vector3D[]> cachedTraingles;
 
         void clearCache()
@@ -268,75 +278,80 @@ namespace Zadanie2GK
         {
             normal.Normalize();
             light.Normalize();
-            Vector3D V = new Vector3D(0, 0, 1);
+
             Vector3D R = (2 * Vector3D.DotProduct(normal, light) * normal) - light;
+            R.Normalize();
 
-            double red = (kd * lightColor.r * objectColor.r * PositiveCos(normal, light)) + ((1 - kd) * lightColor.r * objectColor.r * Math.Pow(PositiveCos(V, R), m));
+            double cosNL = PositiveCos(normal, light);
+            double cosVRM = Math.Pow(PositiveCos(V, R), m);
+            double loR = lightColor.r * objectColor.r;
+            double loG = lightColor.g * objectColor.g;
+            double loB = lightColor.b * objectColor.b;
 
-            double green = (kd * lightColor.g * objectColor.g * PositiveCos(normal, light)) + ((1 - kd) * lightColor.g * objectColor.g * Math.Pow(PositiveCos(V, R), m));
-
-            double blue = (kd * lightColor.b * objectColor.b * PositiveCos(normal, light)) + ((1 - kd) * lightColor.b * objectColor.b * Math.Pow(PositiveCos(V, R), m));
+            double red = (kd * loR * cosNL) + ((1 - kd) * loR * cosVRM);
+            double green = (kd * loG * cosNL) + ((1 - kd) * loG * cosVRM);
+            double blue = (kd * loB * cosNL) + ((1 - kd) * loB * cosVRM);
 
             return (red, green, blue);
         }
         double PositiveCos(Vector3D a, Vector3D b)
         {
-            return Math.Max(Vector3D.DotProduct(a, b) / a.Length / b.Length, 0);
+            // a and b are versors
+            return Math.Max(Vector3D.DotProduct(a, b), 0);
         }
     }
     public partial class Drawer
     {
         static int height, width;
         static Calculator calc;
-        //Pen pen = new Pen(Color.Black);
-        static SolidBrush brush = new SolidBrush(Color.Black);
-        System.Drawing.Color[,] colors; 
+
+        int numberOfSegmentsCache = -1;
+
+        bool saveCache = false;
+        (double a, double b, double c)[,] cacheCoefs = null;
+        Vector3D[,] lastLightV;
+
         public Drawer(int width, int height)
         {
             Drawer.height = height;
             Drawer.width = width;
-            colors = new Color[width + 1, height + 1];
+            lastLightV = new Vector3D[width, height];
         }
-        public void DrawPolygons(Graphics gfx, Calculator calculator, Vector3D lightPos)
+        public void DrawPolygons(byte[] buffor, int depth, Calculator calculator, Vector3D lightPos)
         {
             Vector3D[,] points = calculator.GetPoints3();
             Vector3D[,] normalV = calculator.GetNormalVectors();
             Vector3D[,] lightV = calculator.GetLightVectors(lightPos);
             calc = calculator;
+            if(numberOfSegmentsCache != calc.numberSegments)
+            {
+                numberOfSegmentsCache = calc.numberSegments;
+                cacheCoefs = new (double a, double b, double c)[width, height];
+                saveCache = true;
+            }
 
-            for (int i = 0; i < calculator.numberSegments; i++)
-                for (int j = 0; j < calculator.numberSegments; j++)
+                Parallel.For(0, calculator.numberSegments* calculator.numberSegments, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount - 1 }, k =>
                 {
-                    // (i,j)    (i+1,j)
-                    // (i,j+1)  (i+1,j+1)
-                    //DrawPolygon(e,
-                    //    new[] { points[i, j], points[i + 1, j], points[i + 1, j + 1] },
-                    //    new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
-                    //    new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] });
-                    //DrawPolygon(e,
-                    // new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
-                    // new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
-                    // new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
-                    //);
-                    ComputeColorsLineScan(gfx,
-                        new[] { points[i, j], points[i + 1, j], points[i + 1, j + 1] },
-                        new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
-                        new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] });
-                    ComputeColorsLineScan(gfx,
-                             new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
-                             new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
-                             new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
-                                );
-                }
-            for (int i = 0; i < width + 1; i++)
-                for (int j = 0; j < height + 1; j++)
-                {
-                    brush.Color = colors[i, j];
-                    gfx.FillRectangle(brush, i, j, 1, 1);
-                }
+                    int i = k % calc.numberSegments;
+                    int j = k / calc.numberSegments;
+                    //for (int j = 0; j < calculator.numberSegments; j++)
+                    {
+                        DrawPolygon(buffor, depth,
+                            new[] { points[i, j], points[i + 1, j], points[i + 1, j + 1] },
+                            new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
+                            new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] });
+                        DrawPolygon(buffor, depth,
+                         new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
+                         new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
+                         new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
+                        );
+                    }
+                });
 
+            
+            saveCache = false;
         }
-        void DrawPolygon(Graphics gfx, Vector3D[] Points, Vector3D[] normalVectors, Vector3D[] lightVectors)
+        void DrawPolygon(byte[] buffor, int depth, Vector3D[] Points, Vector3D[] normalVectors, Vector3D[] lightVectors)
         {
             Point[] P = Points.Select(v => new Point((int)(v.X * width), (int)(v.Y * height))).ToArray();
             int N = P.Length;
@@ -350,9 +365,8 @@ namespace Zadanie2GK
                 if (P[i].Y == P[(i + 1) % N].Y)
                     for (int x = Math.Min(P[i].X, P[(i + 1) % N].X); x <= Math.Max(P[i].X, P[(i + 1) % N].X); x++)
                     {
-                        DrawPixel(gfx, x, P[i].Y, P, normalVectors, lightVectors);
+                        DrawPixel(buffor, depth, x, P[i].Y, P, normalVectors, lightVectors);
                     }
-            //e.Graphics.DrawLine(pen, P[i], P[(i + 1) % N]);
 
             for (int y = ymin; y <= ymax; y++)
             {
@@ -388,233 +402,65 @@ namespace Zadanie2GK
                         else if (i % 2 == 1)
                         {
                             x2 = iter.Current;
-                            //e.Graphics.DrawLine(pen, (int)x1, y, (int)x2, y);
-                            for(int x= (int)x1; x<= (int)x2; x++)
+
+                            if (calc.numberSegments < 5)
                             {
-                                DrawPixel(gfx, x, y, P, normalVectors, lightVectors);
+                                Parallel.For((int)x1, (int)x2 + 1, x =>
+                                    {
+                                        DrawPixel(buffor, depth, x, y, P, normalVectors, lightVectors);
+                                    });
                             }
+                            else
+                            {
+                                for (int x = (int)x1; x <= (int)x2; x++)
+                                {
+                                    DrawPixel(buffor, depth, x, y, P, normalVectors, lightVectors);
+                                }
+                            }
+
                         }
                         i++;
                     }
                 }
 
             }
-        }
-
-        void ComputeColorsLineScan(Graphics gfx, Vector3D[] Points, Vector3D[] normalVectors, Vector3D[] lightVectors)
-        {
-            Point[] P = Points.Select(v => new Point((int)(v.X * width), (int)(v.Y * height))).ToArray();
-            int N = P.Length;
-            HashSet<(Point a, Point b)> AET = new HashSet<(Point a, Point b)>();
-            int[] ind = Enumerable.Range(0, N).OrderBy((int i) => P[i].Y).ToArray();
-            int ymin = P[ind[0]].Y;
-            int ymax = P[ind[N - 1]].Y;
-            int k = 0; // indeks w ind[] wierzchołka z poprzedniej scanlini
-
-            for (int i = 0; i < N; i++)
-                if (P[i].Y == P[(i + 1) % N].Y)
-                    for (int x = Math.Min(P[i].X, P[(i + 1) % N].X); x <= Math.Max(P[i].X, P[(i + 1) % N].X); x++)
-                    {
-                        DrawPixel(gfx, x, P[i].Y, P, normalVectors, lightVectors);
-                    }
-            //e.Graphics.DrawLine(pen, P[i], P[(i + 1) % N]);
-
-            for (int y = ymin; y <= ymax; y++)
-            {
-                while (P[ind[k]].Y == y - 1)
-                {
-                    Point curr = P[ind[k]];
-
-                    Point prev = P[(ind[k] - 1 + N) % N];
-                    if (prev.Y > curr.Y)
-                        AET.Add((prev, curr));
-                    else
-                        AET.Remove((prev, curr));
-
-                    Point next = P[(ind[k] + 1) % N];
-                    if (next.Y > curr.Y)
-                        AET.Add((curr, next));
-                    else
-                        AET.Remove((curr, next));
-                    k++;
-                }
-
-                IOrderedEnumerable<double> sortedXs = AET.Select(s => XAt(s.a, s.b, y)).OrderBy(x => x);
-
-                int i = 0;
-                double x1 = 0.0;
-                double x2 = 0.0;
-                using (IEnumerator<double> iter = sortedXs.GetEnumerator())
-                {
-                    while (iter.MoveNext())
-                    {
-                        if (i % 2 == 0)
-                            x1 = iter.Current;
-                        else if (i % 2 == 1)
-                        {
-                            x2 = iter.Current;
-                            //e.Graphics.DrawLine(pen, (int)x1, y, (int)x2, y);
-                            //Parallel.For((int)x1, (int)x2 + 1, x => colors[x, y] = CompColor(x, y, P, normalVectors, lightVectors));
-                            for (int x = (int)x1; x <= (int)x2; x++)
-                            {
-                                colors[x, y] = CompColor(x, y, P, normalVectors, lightVectors);
-                            }
-                        }
-                        i++;
-                    }
-                }
-
-            }
-        }
+        }       
         public static double XAt(Point a, Point b, int y)
         {
             double mx = (b.X - a.X) / ((double)(b.Y - a.Y));
             return a.X + (mx * (y - a.Y));
         }
-        static void DrawPixel(Graphics gfx, int x, int y, Point[] P, Vector3D[] normalVectors, Vector3D[] lightVectors)
+        void DrawPixel(byte[] buffor, int depth, int x, int y, Point[] P, Vector3D[] normalVectors, Vector3D[] lightVectors)
         {
-            double a = (double)((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * x - y * P[2].X) + (y * P[1].X - P[1].Y * x)) / (double)((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * P[1].X - P[1].Y * P[0].X));
-            double b = (double)((P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * x - y * P[0].X) + (y * P[2].X - P[2].Y * x)) / (double)((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * P[1].X - P[1].Y * P[0].X));
-            double c = 1 - a - b;
-            Vector3D aproxN = a * normalVectors[0] + b * normalVectors[1] + c * normalVectors[2];
+            if (x >= width || y >= height) 
+                return;
+            double a, b, c;
+            if (!saveCache)
+            {
+                (a, b, c) = cacheCoefs[x, y];
+            }
+            else
+            {
+                double denom = ((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * P[1].X - P[1].Y * P[0].X));
+                a = ((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * x - y * P[2].X) + (y * P[1].X - P[1].Y * x)) / denom;
+                b = ((P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * x - y * P[0].X) + (y * P[2].X - P[2].Y * x)) / denom;
+                c = 1 - a - b;
+                cacheCoefs[x, y] = (a, b, c);
+            }
             Vector3D aproxL = a * lightVectors[0] + b * lightVectors[1] + c * lightVectors[2];
-            (double r, double g, double b) color = calc.GetColor(aproxN, aproxL);
-            brush.Color = Color.FromArgb(255, (int)(color.r * 255), (int)(color.g * 255), (int)(color.b * 255));
-            gfx.FillRectangle(brush, x, y, 1, 1);
-        }
-    
-    //Multithreading
-
-        static BlockingCollection<(int x, int y, Color c)> linesQ;
-        static object __lockObj = new object();
-        static int polygonsNumber;
-
-        public void DrawMultiThread(PaintEventArgs e, Calculator calculator, Vector3D lightPos)
-        {
-            calc = calculator;
-            polygonsNumber = calc.numberSegments * calc.numberSegments * 2;
-            linesQ = new BlockingCollection<(int x, int y, Color c)>();
-
-            Vector3D[,] points = calculator.GetPoints3();
-            Vector3D[,] normalV = calculator.GetNormalVectors();
-            Vector3D[,] lightV = calculator.GetLightVectors(lightPos);
-
-            Thread drawer = new Thread(() => DrawFromQ(e));
-            drawer.Start();
-            for (int i = 0; i < calculator.numberSegments; i++)
-                for (int j = 0; j < calculator.numberSegments; j++)
-                {
-                    //ThreadPool.QueueUserWorkItem(new WaitCallback((state) => AddToQ(e,
-                    //    new[] { points[i, j], points[i + 1, j], points[i + 1, j + 1] },
-                    //    new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
-                    //    new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] })));
-                    //ThreadPool.QueueUserWorkItem(new WaitCallback((state) => AddToQ(e,
-                    // new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
-                    // new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
-                    // new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
-                    //    )));
-
-                    AddToQ(e,
-                        new[] { points[i, j], points[i + 1, j], points[i + 1, j + 1] },
-                        new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
-                        new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] });
-                    AddToQ(e,
-                     new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
-                     new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
-                     new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
-                        );
-                }
-
-            drawer.Join();
-        }
-        static void AddToQ(PaintEventArgs e, Vector3D[] Points, Vector3D[] normalVectors, Vector3D[] lightVectors)
-        {
-            Point[] P = Points.Select(v => new Point((int)(v.X * width), (int)(v.Y * height))).ToArray();
-            int N = P.Length;
-            HashSet<(Point a, Point b)> AET = new HashSet<(Point a, Point b)>();
-            int[] ind = Enumerable.Range(0, N).OrderBy((int i) => P[i].Y).ToArray();
-            int ymin = P[ind[0]].Y;
-            int ymax = P[ind[N - 1]].Y;
-            int k = 0; // indeks w ind[] wierzchołka z poprzedniej scanlini
-
-            for (int i = 0; i < N; i++)
-                if (P[i].Y == P[(i + 1) % N].Y)
-                    for (int x = Math.Min(P[i].X, P[(i + 1) % N].X); x <= Math.Max(P[i].X, P[(i + 1) % N].X); x++)
-                    {
-                        linesQ.Add((x, P[1].Y, CompColor(x, P[1].Y, P,normalVectors, lightVectors)));
-                    }
- 
-
-            for (int y = ymin; y <= ymax; y++)
-            {
-                while (P[ind[k]].Y == y - 1)
-                {
-                    Point curr = P[ind[k]];
-
-                    Point prev = P[(ind[k] - 1 + N) % N];
-                    if (prev.Y > curr.Y)
-                        AET.Add((prev, curr));
-                    else
-                        AET.Remove((prev, curr));
-
-                    Point next = P[(ind[k] + 1) % N];
-                    if (next.Y > curr.Y)
-                        AET.Add((curr, next));
-                    else
-                        AET.Remove((curr, next));
-                    k++;
-                }
-
-                IOrderedEnumerable<double> sortedXs = AET.Select(s => XAt(s.a, s.b, y)).OrderBy(x => x);
-
-                int i = 0;
-                double x1 = 0.0;
-                double x2 = 0.0;
-                using (IEnumerator<double> iter = sortedXs.GetEnumerator())
-                {
-                    while (iter.MoveNext())
-                    {
-                        if (i % 2 == 0)
-                            x1 = iter.Current;
-                        else if (i % 2 == 1)
-                        {
-                            x2 = iter.Current;
-                            //e.Graphics.DrawLine(pen, (int)x1, y, (int)x2, y);
-                            for (int x = (int)x1; x <= (int)x2; x++)
-                            {
-                                linesQ.Add((x, y, CompColor(x, y, P, normalVectors, lightVectors)));
-                            }
-                        }
-                        i++;
-                    }
-                }
-
-            }
-            lock (__lockObj)
-            {
-                polygonsNumber--;
-                if (polygonsNumber == 0) linesQ.CompleteAdding();
-            }
-
-        }
-        static void DrawFromQ(PaintEventArgs e)
-        {
-            while (linesQ.TryTake(out (int x, int y, Color c) data))
-            {
-                SolidBrush sb = new SolidBrush(data.c);
-                e.Graphics.FillRectangle(sb, data.x, data.y, 1, 1);
-                sb.Dispose();
-            }
-        }
-        static Color CompColor(int x, int y, Point[] P, Vector3D[] normalVectors, Vector3D[] lightVectors)
-        {
-            double a = (double)((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * x - y * P[2].X) + (y * P[1].X - P[1].Y * x)) / (double)((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * P[1].X - P[1].Y * P[0].X));
-            double b = (double)((P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * x - y * P[0].X) + (y * P[2].X - P[2].Y * x)) / (double)((P[1].Y * P[2].X - P[2].Y * P[1].X) + (P[2].Y * P[0].X - P[0].Y * P[2].X) + (P[0].Y * P[1].X - P[1].Y * P[0].X));
-            double c = 1 - a - b;
+            //if (vectorDist(aproxL, lastLightV[x, y]) < 0.01) return;
+            lastLightV[x,y] = aproxL;
             Vector3D aproxN = a * normalVectors[0] + b * normalVectors[1] + c * normalVectors[2];
-            Vector3D aproxL = a * lightVectors[0] + b * lightVectors[1] + c * lightVectors[2];
             (double r, double g, double b) color = calc.GetColor(aproxN, aproxL);
-            return Color.FromArgb((int)(color.r * 255), (int)(color.g * 255), (int)(color.b * 255));
+            int offset = ((y * width) + x) * depth;
+            buffor[offset + 3] = 255;
+            buffor[offset + 2] = (byte)(color.r * 255);
+            buffor[offset + 1] = (byte)(color.g * 255);
+            buffor[offset + 0] = (byte)(color.b * 255);
+        }
+        double vectorDist(Vector3D a, Vector3D b)
+        {
+            return (a.Z - b.Z) * (a.Z - b.Z) + (a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y);
         }
     }
 
