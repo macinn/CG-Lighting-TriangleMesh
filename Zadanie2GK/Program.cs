@@ -16,7 +16,7 @@ namespace Zadanie2GK
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Zadanie2());
+            Application.Run(new Kontroler());
         }
     }
 }
