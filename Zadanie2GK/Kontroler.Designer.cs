@@ -29,7 +29,6 @@
         private void InitializeComponent()
         {
             this.components = new System.ComponentModel.Container();
-            this.colorBindingSource = new System.Windows.Forms.BindingSource(this.components);
             this.tableLayoutPanel1 = new System.Windows.Forms.TableLayoutPanel();
             this.lightRNum = new System.Windows.Forms.NumericUpDown();
             this.label6 = new System.Windows.Forms.Label();
@@ -48,12 +47,17 @@
             this.stopButton = new System.Windows.Forms.Button();
             this.label7 = new System.Windows.Forms.Label();
             this.mapModeBox = new System.Windows.Forms.ComboBox();
-            this.resetButton = new System.Windows.Forms.Button();
             this.label8 = new System.Windows.Forms.Label();
             this.label9 = new System.Windows.Forms.Label();
             this.xSegNum = new System.Windows.Forms.NumericUpDown();
             this.ySegNum = new System.Windows.Forms.NumericUpDown();
-            ((System.ComponentModel.ISupportInitialize)(this.colorBindingSource)).BeginInit();
+            this.textureButton = new System.Windows.Forms.Button();
+            this.label10 = new System.Windows.Forms.Label();
+            this.ksValueNum = new System.Windows.Forms.NumericUpDown();
+            this.zTextBox = new System.Windows.Forms.TextBox();
+            this.resetButton = new System.Windows.Forms.Button();
+            this.label11 = new System.Windows.Forms.Label();
+            this.zErrorProvider = new System.Windows.Forms.ErrorProvider(this.components);
             this.tableLayoutPanel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.lightRNum)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.lightHNum)).BeginInit();
@@ -61,11 +65,9 @@
             ((System.ComponentModel.ISupportInitialize)(this.mValueNum)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.xSegNum)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.ySegNum)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.ksValueNum)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.zErrorProvider)).BeginInit();
             this.SuspendLayout();
-            // 
-            // colorBindingSource
-            // 
-            this.colorBindingSource.DataSource = typeof(System.Drawing.Color);
             // 
             // tableLayoutPanel1
             // 
@@ -89,15 +91,20 @@
             this.tableLayoutPanel1.Controls.Add(this.stopButton, 0, 8);
             this.tableLayoutPanel1.Controls.Add(this.label7, 0, 9);
             this.tableLayoutPanel1.Controls.Add(this.mapModeBox, 1, 9);
-            this.tableLayoutPanel1.Controls.Add(this.resetButton, 1, 13);
             this.tableLayoutPanel1.Controls.Add(this.label8, 0, 11);
             this.tableLayoutPanel1.Controls.Add(this.label9, 0, 12);
             this.tableLayoutPanel1.Controls.Add(this.xSegNum, 1, 11);
             this.tableLayoutPanel1.Controls.Add(this.ySegNum, 1, 12);
+            this.tableLayoutPanel1.Controls.Add(this.textureButton, 1, 8);
+            this.tableLayoutPanel1.Controls.Add(this.label10, 0, 13);
+            this.tableLayoutPanel1.Controls.Add(this.ksValueNum, 1, 13);
+            this.tableLayoutPanel1.Controls.Add(this.zTextBox, 1, 14);
+            this.tableLayoutPanel1.Controls.Add(this.resetButton, 1, 15);
+            this.tableLayoutPanel1.Controls.Add(this.label11, 0, 14);
             this.tableLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tableLayoutPanel1.Location = new System.Drawing.Point(0, 0);
             this.tableLayoutPanel1.Name = "tableLayoutPanel1";
-            this.tableLayoutPanel1.RowCount = 14;
+            this.tableLayoutPanel1.RowCount = 16;
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
@@ -111,8 +118,10 @@
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 20F));
-            this.tableLayoutPanel1.Size = new System.Drawing.Size(369, 383);
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tableLayoutPanel1.Size = new System.Drawing.Size(369, 533);
             this.tableLayoutPanel1.TabIndex = 5;
             // 
             // lightRNum
@@ -278,8 +287,9 @@
             this.mapCheckBox.Name = "mapCheckBox";
             this.mapCheckBox.Size = new System.Drawing.Size(244, 30);
             this.mapCheckBox.TabIndex = 8;
-            this.mapCheckBox.Text = "Use normal map";
+            this.mapCheckBox.Text = "Draw only triangles";
             this.mapCheckBox.UseVisualStyleBackColor = true;
+            this.mapCheckBox.CheckedChanged += new System.EventHandler(this.mapCheckBox_CheckedChanged);
             // 
             // loadButton
             // 
@@ -294,7 +304,6 @@
             // 
             // stopButton
             // 
-            this.tableLayoutPanel1.SetColumnSpan(this.stopButton, 2);
             this.stopButton.Dock = System.Windows.Forms.DockStyle.Left;
             this.stopButton.Location = new System.Drawing.Point(3, 211);
             this.stopButton.Name = "stopButton";
@@ -323,18 +332,7 @@
             this.mapModeBox.Name = "mapModeBox";
             this.mapModeBox.Size = new System.Drawing.Size(244, 24);
             this.mapModeBox.TabIndex = 15;
-            // 
-            // resetButton
-            // 
-            this.resetButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.resetButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F);
-            this.resetButton.Location = new System.Drawing.Point(122, 333);
-            this.resetButton.Name = "resetButton";
-            this.resetButton.Size = new System.Drawing.Size(244, 47);
-            this.resetButton.TabIndex = 17;
-            this.resetButton.Text = "Reset drawer";
-            this.resetButton.UseVisualStyleBackColor = true;
-            this.resetButton.Click += new System.EventHandler(this.resetButton_Click);
+            this.mapModeBox.SelectedIndexChanged += new System.EventHandler(this.mapModeBox_SelectedIndexChanged);
             // 
             // label8
             // 
@@ -362,30 +360,129 @@
             // 
             this.xSegNum.Dock = System.Windows.Forms.DockStyle.Fill;
             this.xSegNum.Location = new System.Drawing.Point(122, 277);
+            this.xSegNum.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.xSegNum.Name = "xSegNum";
             this.xSegNum.Size = new System.Drawing.Size(244, 22);
             this.xSegNum.TabIndex = 20;
+            this.xSegNum.Value = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.xSegNum.ValueChanged += new System.EventHandler(this.xSegNum_ValueChanged);
             // 
             // ySegNum
             // 
             this.ySegNum.Dock = System.Windows.Forms.DockStyle.Fill;
             this.ySegNum.Location = new System.Drawing.Point(122, 305);
+            this.ySegNum.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.ySegNum.Name = "ySegNum";
             this.ySegNum.Size = new System.Drawing.Size(244, 22);
             this.ySegNum.TabIndex = 21;
+            this.ySegNum.Value = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.ySegNum.ValueChanged += new System.EventHandler(this.ySegNum_ValueChanged);
+            // 
+            // textureButton
+            // 
+            this.textureButton.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.textureButton.Location = new System.Drawing.Point(122, 211);
+            this.textureButton.Name = "textureButton";
+            this.textureButton.Size = new System.Drawing.Size(244, 30);
+            this.textureButton.TabIndex = 22;
+            this.textureButton.Text = "Load texture";
+            this.textureButton.UseVisualStyleBackColor = true;
+            this.textureButton.Click += new System.EventHandler(this.textureButton_Click);
+            // 
+            // label10
+            // 
+            this.label10.AutoSize = true;
+            this.label10.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.label10.Location = new System.Drawing.Point(3, 330);
+            this.label10.Name = "label10";
+            this.label10.Size = new System.Drawing.Size(113, 28);
+            this.label10.TabIndex = 23;
+            this.label10.Text = "Ks value";
+            this.label10.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            // 
+            // ksValueNum
+            // 
+            this.ksValueNum.DecimalPlaces = 2;
+            this.ksValueNum.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.ksValueNum.Increment = new decimal(new int[] {
+            1,
+            0,
+            0,
+            65536});
+            this.ksValueNum.Location = new System.Drawing.Point(122, 333);
+            this.ksValueNum.Maximum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
+            this.ksValueNum.Name = "ksValueNum";
+            this.ksValueNum.Size = new System.Drawing.Size(244, 22);
+            this.ksValueNum.TabIndex = 24;
+            this.ksValueNum.ValueChanged += new System.EventHandler(this.ksValueNum_ValueChanged);
+            // 
+            // zTextBox
+            // 
+            this.zTextBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.zTextBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(238)));
+            this.zTextBox.Location = new System.Drawing.Point(122, 361);
+            this.zTextBox.Multiline = true;
+            this.zTextBox.Name = "zTextBox";
+            this.zTextBox.Size = new System.Drawing.Size(244, 64);
+            this.zTextBox.TabIndex = 25;
+            this.zTextBox.TextChanged += new System.EventHandler(this.zTextBox_TextChanged);
+            // 
+            // resetButton
+            // 
+            this.resetButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.resetButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F);
+            this.resetButton.Location = new System.Drawing.Point(122, 431);
+            this.resetButton.Name = "resetButton";
+            this.resetButton.Size = new System.Drawing.Size(244, 47);
+            this.resetButton.TabIndex = 17;
+            this.resetButton.Text = "Reset drawer";
+            this.resetButton.UseVisualStyleBackColor = true;
+            this.resetButton.Click += new System.EventHandler(this.resetButton_Click);
+            // 
+            // label11
+            // 
+            this.label11.AutoSize = true;
+            this.label11.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.label11.Location = new System.Drawing.Point(3, 358);
+            this.label11.Name = "label11";
+            this.label11.Size = new System.Drawing.Size(113, 70);
+            this.label11.TabIndex = 26;
+            this.label11.Text = "Z values";
+            this.label11.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            // 
+            // zErrorProvider
+            // 
+            this.zErrorProvider.ContainerControl = this;
             // 
             // Kontroler
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(369, 383);
+            this.ClientSize = new System.Drawing.Size(369, 533);
             this.Controls.Add(this.tableLayoutPanel1);
             this.MaximizeBox = false;
             this.Name = "Kontroler";
             this.Text = "Kontroler";
-            ((System.ComponentModel.ISupportInitialize)(this.colorBindingSource)).EndInit();
             this.tableLayoutPanel1.ResumeLayout(false);
             this.tableLayoutPanel1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.lightRNum)).EndInit();
@@ -394,12 +491,13 @@
             ((System.ComponentModel.ISupportInitialize)(this.mValueNum)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.xSegNum)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.ySegNum)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.ksValueNum)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.zErrorProvider)).EndInit();
             this.ResumeLayout(false);
 
         }
 
         #endregion
-        private System.Windows.Forms.BindingSource colorBindingSource;
         private System.Windows.Forms.TableLayoutPanel tableLayoutPanel1;
         private System.Windows.Forms.ComboBox objectColorBox;
         private System.Windows.Forms.Label label2;
@@ -411,17 +509,23 @@
         private System.Windows.Forms.NumericUpDown kdValueNum;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Label label3;
-        private System.Windows.Forms.CheckBox mapCheckBox;
         private System.Windows.Forms.Button loadButton;
         private System.Windows.Forms.NumericUpDown lightRNum;
         private System.Windows.Forms.Label label6;
         private System.Windows.Forms.Button stopButton;
         private System.Windows.Forms.Label label7;
-        private System.Windows.Forms.ComboBox mapModeBox;
-        private System.Windows.Forms.Button resetButton;
         private System.Windows.Forms.Label label8;
         private System.Windows.Forms.Label label9;
         private System.Windows.Forms.NumericUpDown xSegNum;
         private System.Windows.Forms.NumericUpDown ySegNum;
+        private System.Windows.Forms.CheckBox mapCheckBox;
+        private System.Windows.Forms.ComboBox mapModeBox;
+        private System.Windows.Forms.Button textureButton;
+        private System.Windows.Forms.Button resetButton;
+        private System.Windows.Forms.Label label10;
+        private System.Windows.Forms.NumericUpDown ksValueNum;
+        private System.Windows.Forms.TextBox zTextBox;
+        private System.Windows.Forms.Label label11;
+        private System.Windows.Forms.ErrorProvider zErrorProvider;
     }
 }

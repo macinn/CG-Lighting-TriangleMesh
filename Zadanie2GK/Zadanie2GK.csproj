@@ -79,12 +79,6 @@
     <EmbeddedResource Include="Zadanie2.resx">
       <DependentUpon>Zadanie2.cs</DependentUpon>
     </EmbeddedResource>
-    <None Include="Properties\DataSources\Canvas.datasource" />
-    <None Include="Properties\DataSources\Program.datasource" />
-    <None Include="Properties\DataSources\System.Drawing.Color.datasource" />
-    <None Include="Properties\DataSources\Zadanie2.datasource" />
-    <None Include="Properties\DataSources\Zadanie2GK.Properties.Resources.datasource" />
-    <None Include="Properties\DataSources\Zadanie2GK.Properties.Settings.datasource" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>

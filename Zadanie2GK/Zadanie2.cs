@@ -5,44 +5,77 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Media.Media3D;
-
-// TODO:
-// -źródło światła wspolrzedna z, radius, kolor obiaktu, swiatla do wybrania
-
-
+using static Zadanie2GK.Zadanie2.Drawer;
 
 namespace Zadanie2GK
 {
     public partial class Zadanie2 : Form
     {
+        readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+        readonly Stopwatch stopWatch = new Stopwatch();
         readonly Drawer drawer;
         readonly Calculator calculator;
+
+        Action<byte[], int, Calculator, Vector3D> drawFunction;
         uint frame = 0;
-        static double lightRadius = 2.0;
-        Vector3D lightPos = new Vector3D(0.5 + lightRadius, 0.5, 5);
-        readonly Stopwatch stopWatch = new Stopwatch();
-        readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         double lastFPS = 0;
+        static double lightRadius = 2.0;
+        static Vector3D lightPos = new Vector3D(0.5 + lightRadius, 0.5, 5);
+
         byte[] buffer;
+        Bitmap bmpA, bmpB;
+        int depth;
+        bool isAUsed = false;
 
         public int numXSegments { set { calculator.SetPrecision( value, calculator.numberYSegments); } }
         public int numYSegments { set { calculator.SetPrecision(calculator.numberXSegments, value); } }
         public int m { set { calculator.m = value; } }
         public double kd { set { calculator.kd = value; } }
+        public double ks { set { calculator.ks = value; } }
         public string normalMap { set { drawer.LoadBitmap(value); } }
         public Color lightColor { set { calculator.lightColor = (value.R/255.0, value.G/255.0, value.B / 255.0); } }
-        public Color objectColor { set { calculator.objectColor = (value.R / 255.0, value.G / 255.0, value.B / 255.0); } }
-        
+        public Color objectColor { set { calculator.objectColor = (value.R / 255.0, value.G / 255.0, value.B / 255.0); drawer.LoadColorMap(null); } }
+        public Drawer.NormalMap mapMode { set { drawer.SetMapState(value); } }       
         public double lightR { set { lightRadius = value; } }
         public double lightH { set { lightPos.Z = value; } }
-        public Zadanie2(int numXSegments, int numYSegments, int m, double kd, Color lightColor, Color objectColor)
+        public double[,] Z { set { calculator.SetZ(value); }  get { return calculator.Z; } }
+        public bool drawOnlyTraingles { set {
+                if (!value)
+                    drawFunction = (buffer, depth, calculator, lightPos)
+                        => drawer.DrawPolygons(buffer, depth, calculator, lightPos);
+                else
+                    drawFunction = (buffer, depth, calculator, lightPos)
+                        =>{Array.Clear(buffer, 0, buffer.Length);
+                            drawer.DrawBorders(buffer, depth, calculator, lightPos);};
+                if (buffer != null) Array.Clear(buffer, 0, buffer.Length);
+            } }
+        public string colorMap { set { drawer.LoadColorMap(value); } }
+        public Zadanie2(int numXSegments, int numYSegments, int m, double kd, double ks, Color lightColor, Color objectColor)
         {
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             InitializeComponent();
+
+            //this.Width = 1000;
+            //this.Height = 1000;
+            //Canvas.Width = 1000;
+            //Canvas.Height = 1000;
+
+            drawOnlyTraingles = false;
+
+            bmpA = new Bitmap(Canvas.Width, Canvas.Height);
+            bmpB = new Bitmap(Canvas.Width, Canvas.Height);
+            if (bmpA.PixelFormat != bmpB.PixelFormat)
+                throw new Exception("formaty inne?");
+            depth = Bitmap.GetPixelFormatSize(bmpA.PixelFormat) / 8;
+            buffer = new byte[Canvas.Width * Canvas.Height * depth];
+            Canvas.Image = bmpA;
+            isAUsed = true;
 
             drawer = new Drawer(Canvas.Width, Canvas.Height);
             calculator = new Calculator();
@@ -50,13 +83,13 @@ namespace Zadanie2GK
             this.numYSegments = numYSegments;
             this.m = m;
             this.kd = kd;
+            this.ks = ks;
             this.lightColor = lightColor;
             this.objectColor = objectColor;
 
-            //calculator.SetPrecision(30, 5);
             //drawer.LoadBitmap("C:\\Users\\marci\\Downloads\\NormalMap.png");
             //drawer.LoadBitmap("C:\\Users\\marci\\OneDrive - Politechnika Warszawska\\Pulpit\\brick_normalmap.png");
-            drawer.LoadBitmap("C:\\Users\\marci\\source\\repos\\Zadanie2GK\\Zadanie2GK\\bin\\Debug\\normal_map.jpg");
+            //drawer.LoadBitmap("C:\\Users\\marci\\source\\repos\\Zadanie2GK\\Zadanie2GK\\bin\\Debug\\normal_map.jpg");
 
             timer.Interval = 25; // 40 FPS
             timer.Tick += new EventHandler(RenderFrame);
@@ -77,17 +110,25 @@ namespace Zadanie2GK
             stopWatch.Restart();
 
             //// https://stackoverflow.com/questions/21497537/allow-an-image-to-be-accessed-by-several-threads
-            Bitmap bmp = new Bitmap(Canvas.Width, Canvas.Height);
-            Rectangle rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
-            BitmapData data = bmp.LockBits(rect, ImageLockMode.ReadWrite, bmp.PixelFormat);
-            int depth = Bitmap.GetPixelFormatSize(data.PixelFormat) / 8; //bytes per pixel 
-            if (buffer == null)
-                buffer = new byte[Canvas.Width * data.Height * depth];
-            drawer.DrawPolygons(buffer, depth, calculator, lightPos);
-            Marshal.Copy(buffer, 0, data.Scan0, buffer.Length);
-            bmp.UnlockBits(data);
-            Canvas.Image = bmp;
-            //Canvas.Invalidate();
+            // podwojne buforowanie
+            Rectangle rect = new Rectangle(0, 0, Canvas.Width, Canvas.Height);
+            if (isAUsed)
+            {              
+                BitmapData data = bmpB.LockBits(rect, ImageLockMode.ReadWrite, bmpB.PixelFormat);
+                drawFunction(buffer, depth, calculator, lightPos);
+                Marshal.Copy(buffer, 0, data.Scan0, buffer.Length);
+                bmpB.UnlockBits(data);
+                Canvas.Image = bmpB;
+            }
+            else
+            {
+                BitmapData data = bmpA.LockBits(rect, ImageLockMode.ReadWrite, bmpA.PixelFormat);
+                drawFunction(buffer, depth, calculator, lightPos);
+                Marshal.Copy(buffer, 0, data.Scan0, buffer.Length);
+                bmpA.UnlockBits(data);
+                Canvas.Image = bmpA;
+            }
+            isAUsed = !isAUsed;
 
             stopWatch.Stop();
             lastFPS += 1000.0 / stopWatch.ElapsedMilliseconds;
@@ -100,12 +141,13 @@ namespace Zadanie2GK
             lightPos.X = (lightRadius * Math.Cos(frame * 40f / 5000f * 2f * Math.PI)) + 0.5;
             lightPos.Y = (lightRadius * Math.Sin(frame * 40f / 5000f * 2f * Math.PI)) + 0.5;
         }
-        class Calculator
+        public class Calculator
         {
-            double[,] Z;
+            public double[,] Z;
             public int numberXSegments;
             public int numberYSegments;
             public double kd = 0.2;
+            public double ks = 0.8;
             public int m = 30;
             public (double r, double g, double b) lightColor = (1, 1, 1);
             public (double r, double g, double b) objectColor = (1, 0, 0);
@@ -131,7 +173,11 @@ namespace Zadanie2GK
                 this.numberYSegments = numberY;
                 clearCache();
             }
-
+            public void SetZ(double[,] Z)
+            {
+                this.Z = Z;
+                clearCache();
+            }
             public void InitZ()
             {
                 /// kola (x-1/2)^2 + (y-1/2)^2 + z^2 = 1
@@ -143,7 +189,7 @@ namespace Zadanie2GK
                     {
                         //Z[i, j] = Math.Sqrt(1 - (((i * dist) - (1 / 2f)) * ((i * dist) - (1 / 2f))) - (((j * dist) - (1 / 2f)) * ((j * dist) - (1 / 2f))));
                         Z[i, j] = 0;
-                        //Z[i, j] = rand.NextDouble();
+                        //Z[i, j] = rand.NextDouble()*10;
                     }
             }
             double B(int i, double t)
@@ -246,28 +292,28 @@ namespace Zadanie2GK
                     }
                 return lightvectors;
             }
-            public List<(double r, double g, double b)> CalculateColors(Vector3D lightPos)
-            {
-                Vector3D[,] points3 = GetPoints3();
-                Vector3D[,] normals = GetNormalVectors(points3);
-                Vector3D[,] lightvectores = GetLightVectors(lightPos);
+            //public List<(double r, double g, double b)> CalculateColors(Vector3D lightPos)
+            //{
+            //    Vector3D[,] points3 = GetPoints3();
+            //    Vector3D[,] normals = GetNormalVectors(points3);
+            //    Vector3D[,] lightvectores = GetLightVectors(lightPos);
 
-                List<(double r, double g, double b)> colors = new List<(double r, double g, double b)>(numberXSegments * numberYSegments * 2);
+            //    List<(double r, double g, double b)> colors = new List<(double r, double g, double b)>(numberXSegments * numberYSegments * 2);
 
-                for (int i = 0; i < numberXSegments; i++)
-                    for (int j = 0; j < numberYSegments; j++)
-                    {
-                        Vector3D normal1 = 1 / 3.0 * (normals[i, j] + normals[i + 1, j] + normals[i + 1, j + 1]);
-                        Vector3D light1 = 1 / 3.0 * (lightvectores[i, j] + lightvectores[i + 1, j] + lightvectores[i + 1, j + 1]);
-                        colors.Add(GetColor(normal1, light1));
+            //    for (int i = 0; i < numberXSegments; i++)
+            //        for (int j = 0; j < numberYSegments; j++)
+            //        {
+            //            Vector3D normal1 = 1 / 3.0 * (normals[i, j] + normals[i + 1, j] + normals[i + 1, j + 1]);
+            //            Vector3D light1 = 1 / 3.0 * (lightvectores[i, j] + lightvectores[i + 1, j] + lightvectores[i + 1, j + 1]);
+            //            colors.Add(GetColor(normal1, light1));
 
-                        Vector3D normal2 = 1 / 3.0 * (normals[i, j] + normals[i, j + 1] + normals[i + 1, j + 1]);
-                        Vector3D light2 = 1 / 3.0 * (lightvectores[i, j] + lightvectores[i, j + 1] + lightvectores[i + 1, j + 1]);
-                        colors.Add(GetColor(normal2, light2));
-                    }
+            //            Vector3D normal2 = 1 / 3.0 * (normals[i, j] + normals[i, j + 1] + normals[i + 1, j + 1]);
+            //            Vector3D light2 = 1 / 3.0 * (lightvectores[i, j] + lightvectores[i, j + 1] + lightvectores[i + 1, j + 1]);
+            //            colors.Add(GetColor(normal2, light2));
+            //        }
 
-                return colors;
-            }
+            //    return colors;
+            //}
             public (double r, double g, double b) GetColor(Vector3D normal, Vector3D light)
             {
                 // asumming normal and light are versors!!!!
@@ -283,9 +329,30 @@ namespace Zadanie2GK
                 double loG = lightColor.g * objectColor.g;
                 double loB = lightColor.b * objectColor.b;
 
-                double red = (kd * loR * cosNL) + ((1 - kd) * loR * cosVRM);
-                double green = (kd * loG * cosNL) + ((1 - kd) * loG * cosVRM);
-                double blue = (kd * loB * cosNL) + ((1 - kd) * loB * cosVRM);
+                double red = (kd * loR * cosNL) + (ks * loR * cosVRM);
+                double green = (kd * loG * cosNL) + (ks * loG * cosVRM);
+                double blue = (kd * loB * cosNL) + (ks * loB * cosVRM);
+
+                return (red, green, blue);
+            }
+            public (double r, double g, double b) GetColor(Vector3D normal, Vector3D light, Color customColor)
+            {
+                // asumming normal and light are versors!!!!
+
+                //normal.Normalize();
+                //light.Normalize();
+                Vector3D R = (2 * Vector3D.DotProduct(normal, light) * normal) - light;
+                //R.Normalize();
+
+                double cosNL = PositiveCos(normal, light);
+                double cosVRM = Math.Pow(PositiveCos(V, R), m);
+                double loR = lightColor.r * customColor.R / 255.0;
+                double loG = lightColor.g * customColor.G / 255.0;
+                double loB = lightColor.b * customColor.B / 255.0;
+
+                double red = (kd * loR * cosNL) + (ks * loR * cosVRM);
+                double green = (kd * loG * cosNL) + (ks * loG * cosVRM);
+                double blue = (kd * loB * cosNL) + (ks * loB * cosVRM);
 
                 return (red, green, blue);
             }
@@ -295,7 +362,7 @@ namespace Zadanie2GK
                 return Math.Max(Vector3D.DotProduct(a, b), 0);
             }
         }
-        class Drawer
+        public class Drawer
         {
             static int height, width;
             static Calculator calc;
@@ -308,9 +375,10 @@ namespace Zadanie2GK
             bool readFromCache = false;
             (int,int) lastCachedSegments = (-1, -1);
             Vector3D[,] cachedNormals;
+
+            Color[,] loadedColors;
             public enum NormalMap
             { None, Multiply, Add }
-
             public Drawer(int width, int height)
             {
                 Drawer.height = height;
@@ -340,7 +408,7 @@ namespace Zadanie2GK
                     }
                 }
 
-                Parallel.For(0, calculator.numberXSegments * calculator.numberYSegments, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount - 1 }, k =>
+                Parallel.For(0, calculator.numberXSegments * calculator.numberYSegments, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount - 2 }, k =>
                 {
                     int i = k % calc.numberXSegments;
                     int j = k / calc.numberXSegments;
@@ -350,6 +418,49 @@ namespace Zadanie2GK
                             new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
                             new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] });
                         DrawPolygon(buffor, depth,
+                         new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
+                         new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
+                         new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
+                        );
+                    }
+                });
+
+                readFromCache = false;
+            }        
+            public void DrawBorders(byte[] buffor, int depth, Calculator calculator, Vector3D lightPos)
+            {
+                Vector3D[,] points = calculator.GetPoints3();
+                Vector3D[,] normalV = calculator.GetNormalVectors();
+                Vector3D[,] lightV = calculator.GetLightVectors(lightPos);
+                calc = calculator;
+
+                if (lastCachedSegments == (-1, -1))
+                {
+                    cachedNormals = new Vector3D[width, height];
+                    lastCachedSegments = (calc.numberXSegments, calc.numberYSegments);
+                }
+                else if (lastCachedSegments == (calc.numberXSegments, calc.numberYSegments))
+                {
+                    if (cachedNormals != null)
+                    {
+                        readFromCache = true;
+                    }
+                    else
+                    {
+                        cachedNormals = new Vector3D[width, height];
+                    }
+                }
+
+                Parallel.For(0, calculator.numberXSegments * calculator.numberYSegments, new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount - 1 }, k =>
+                {
+                    int i = k % calc.numberXSegments;
+                    int j = k / calc.numberXSegments;
+                    {
+                        DrawBorder(buffor, depth,
+                            new[] { points[i, j], points[i + 1, j], points[i + 1, j + 1] },
+                            new[] { normalV[i, j], normalV[i + 1, j], normalV[i + 1, j + 1] },
+                            new[] { lightV[i, j], lightV[i + 1, j], lightV[i + 1, j + 1] });
+                        DrawBorder(buffor, depth,
                          new[] { points[i, j], points[i, j + 1], points[i + 1, j + 1] },
                          new[] { normalV[i, j], normalV[i, j + 1], normalV[i + 1, j + 1] },
                          new[] { lightV[i, j], lightV[i, j + 1], lightV[i + 1, j + 1] }
@@ -411,14 +522,6 @@ namespace Zadanie2GK
                             {
                                 x2 = iter.Current;
 
-                                //if (calc.numberXSegments * calc.numberYSegments < 25)
-                                //{
-                                //    Parallel.For((int)x1, (int)x2 + 1, x =>
-                                //    {
-                                //        DrawPixel(buffor, depth, x, y, P, normalVectors, lightVectors);
-                                //    });
-                                //}
-                                //else
                                 {
                                     for (int x = (int)x1; x <= (int)x2; x++)
                                     {
@@ -433,6 +536,85 @@ namespace Zadanie2GK
 
                 }
             }
+            void DrawBorder(byte[] buffor, int depth, Vector3D[] Points, Vector3D[] normalVectors, Vector3D[] lightVectors)
+            {
+                Point[] P = Points.Select(v => new Point((int)(v.X * width), (int)(v.Y * height))).ToArray();
+                int N = P.Length;
+                for(int i=0; i < N; i++)
+                {
+                    DrawLine(buffor, depth, P[i], P[(i+1) % N],P, normalVectors, lightVectors);
+                }
+                
+            }
+            void DrawLine(byte[] buffor, int depth, Point p1, Point p2, Point[] P, Vector3D[] normalVectors, Vector3D[] lightVectors)
+            {
+                //https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+                int DY = p2.Y - p1.Y;
+                int DX = p2.X - p1.X;
+                if (Math.Abs(DY) < Math.Abs(DX))
+                {
+                    if (p1.X > p2.X)
+                        plotLineLow(p2, p1);
+                    else
+                        plotLineLow(p1, p2);
+                }
+                else
+                {
+                    if (p1.Y > p2.Y)
+                        plotLineHigh(p2, p1);
+                    else
+                        plotLineHigh(p1, p2);
+                }
+
+                void plotLineHigh(Point point1, Point point2)
+                {
+                    int dx = point2.X - point1.X;
+                    int dy = point2.Y - point1.Y;
+                    int xi = 1;
+                    if (dx < 0)
+                    {
+                        xi = -1;
+                        dx = -dx;
+                    }
+                    int D = 2 * dx - dy;
+                    int x1 = point1.X;
+                    for (int y1 = point1.Y; y1 <= point2.Y; y1++)
+                    {
+                        DrawPixel(buffor, depth, x1, y1, P, normalVectors, lightVectors);
+    
+                    if (D > 0)
+                        {
+                            x1 += xi;
+                            D -= 2 * dy;
+                        }
+                        D += 2 * dx;
+                    }
+                }
+                void plotLineLow(Point point0, Point point1)
+                {
+                    int dx = point1.X - point0.X;
+                    int dy = point1.Y - point0.Y;
+                    int yi = 1;
+                    if (dy < 0)
+                    {
+                        yi = -1;
+                        dy = -dy;
+                    }
+                    int D = 2 * dy - dx;
+                    int y1 = point0.Y;
+                    for (int x1 = point0.X; x1 <= point1.X; x1++)
+                    {
+                        DrawPixel(buffor, depth, x1, y1, P, normalVectors, lightVectors);
+
+                        if (D >= 0)
+                        {
+                            y1 += yi;
+                            D -= 2 * dx;
+                        }
+                        D += 2 * dy;
+                    }
+                }
+            }
             public static double XAt(Point a, Point b, int y)
             {
                 double mx = (b.X - a.X) / ((double)(b.Y - a.Y));
@@ -442,6 +624,7 @@ namespace Zadanie2GK
             {
                 if (x >= width || y >= height)
                     return;
+
                 double a, b, c;
                 double denom = (P[1].Y * P[2].X) - (P[2].Y * P[1].X) + ((P[2].Y * P[0].X) - (P[0].Y * P[2].X)) + ((P[0].Y * P[1].X) - (P[1].Y * P[0].X));
                 a = ((P[1].Y * P[2].X) - (P[2].Y * P[1].X) + ((P[2].Y * x) - (y * P[2].X)) + ((y * P[1].X) - (P[1].Y * x))) / denom;
@@ -449,8 +632,7 @@ namespace Zadanie2GK
                 c = 1 - a - b;
 
                 Vector3D aproxL = (a * lightVectors[0]) + (b * lightVectors[1]) + (c * lightVectors[2]);
-
-                //Vector3D aproxN = (a * normalVectors[0]) + (b * normalVectors[1]) + (c * normalVectors[2]);
+                aproxL.Normalize();
                 Vector3D aproxN;
                 if (readFromCache)
                     aproxN = cachedNormals[x, y];
@@ -489,14 +671,19 @@ namespace Zadanie2GK
                     cachedNormals[x, y] = aproxN;
                 }
 
-                (double r, double g, double b) color = calc.GetColor(aproxN, aproxL);
+                (double r, double g, double b) color;
+                if (loadedColors == null)
+                    color = calc.GetColor(aproxN, aproxL);
+                else
+                    color = calc.GetColor(aproxN, aproxL, 
+                        loadedColors[(int)(x * (loadedColors.GetLength(0) - 1) / width), (int)(y * (loadedColors.GetLength(0) - 1) / height)]);
+
                 int offset = ((y * width) + x) * depth;
                 buffor[offset + 3] = 255;
                 buffor[offset + 2] = (byte)(color.r * 255);
                 buffor[offset + 1] = (byte)(color.g * 255);
                 buffor[offset + 0] = (byte)(color.b * 255);
             }
-
             public void LoadBitmap(string filename)
             {
                 if (String.IsNullOrEmpty(filename))
@@ -530,6 +717,22 @@ namespace Zadanie2GK
             (int x, int y) Ind2Bitmap(int x, int y)
             {
                 return ((int)(x * (bmpWidth - 1) / width), (int)(y * (bmpHeight - 1) / height));
+            }
+
+            internal void LoadColorMap(string filename)
+            {
+                if (String.IsNullOrEmpty(filename))
+                {
+                    loadedColors = null;
+                    return;
+                }
+                Bitmap bmp = new Bitmap(filename);
+                loadedColors = new Color[bmp.Width, bmp.Height];
+                for (int x = 0; x < bmp.Width; x++)
+                    for (int y = 0; y < bmp.Height; y++)
+                    {
+                        loadedColors[x, y] = bmp.GetPixel(x, y);
+                    }
             }
         }
     }
