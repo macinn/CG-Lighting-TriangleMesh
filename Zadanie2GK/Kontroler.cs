@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Windows.Media.Media3D;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace Zadanie2GK
@@ -16,8 +17,8 @@ namespace Zadanie2GK
     public partial class Kontroler : Form
     {
         Zadanie2 drawerWindow;
-        static int numXSegments = 30;
-        static int numYSegments = 30;
+        static int numXSegments = 95;
+        static int numYSegments = 95;
         static int m = 30;
         static double kd = 0.2;
         static double ks = 0.8;
@@ -33,6 +34,8 @@ namespace Zadanie2GK
         {
             InitializeComponent();
             drawerWindow = new Zadanie2(numXSegments, numYSegments, m, kd, ks, lightColor, objectColor);
+
+
             drawerWindow.Z = Z;
             drawerWindow.Show();
 
@@ -203,6 +206,7 @@ namespace Zadanie2GK
             }
             catch
             {
+                zErrorProvider.SetIconAlignment(zTextBox, ErrorIconAlignment.BottomLeft);
                 zErrorProvider.SetError(zTextBox, "Niepoprawne wartości punktów kontrolnych!");
             }
         }
@@ -226,6 +230,11 @@ namespace Zadanie2GK
                 drawerWindow.colorMap = openFileDialog.FileName;
             }
             openFileDialog.Dispose();
+        }
+
+        private void labyCheckbox_CheckedChanged(object sender, EventArgs e)
+        {
+            drawerWindow.rysujSfere = labyCheckbox.Checked;
         }
     }
 }

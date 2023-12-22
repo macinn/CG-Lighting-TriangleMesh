@@ -33,6 +33,7 @@ namespace Zadanie2GK
         int depth;
         bool isAUsed = false;
 
+        public bool rysujSfere { set { calculator.rysujSfere = value; drawer.cachedNormals = null; } }
         public int numXSegments { set { calculator.SetPrecision( value, calculator.numberYSegments); } }
         public int numYSegments { set { calculator.SetPrecision(calculator.numberXSegments, value); } }
         public int m { set { calculator.m = value; } }
@@ -151,8 +152,8 @@ namespace Zadanie2GK
             public int m = 30;
             public (double r, double g, double b) lightColor = (1, 1, 1);
             public (double r, double g, double b) objectColor = (1, 0, 0);
-
-
+            bool labySfera = false;
+            public bool rysujSfere { set { labySfera = value; clearCache(); } }
             Vector3D[,] cachedPoints;
             Vector3D[,] cachedNormals;
             static Vector3D V = new Vector3D(0, 0, 1);
@@ -199,11 +200,30 @@ namespace Zadanie2GK
             }
             double z(double x, double y)
             {
-                double sum = 0;
-                for (int i = 0; i < 4; i++)
-                    for (int j = 0; j < 4; j++)
-                        sum += Z[i, j] * B(i, x) * B(j, y);
-                return sum;
+                if (!labySfera)
+                {
+                    double sum = 0;
+                    for (int i = 0; i < 4; i++)
+                        for (int j = 0; j < 4; j++)
+                            sum += Z[i, j] * B(i, x) * B(j, y);
+                    return sum;
+                }
+                else
+                {
+                    Vector3D srodekKuli = new Vector3D(0.5, 0.5, 0.0);
+                    if (0.25 - (x - srodekKuli.X) * (x - srodekKuli.X) - (y - srodekKuli.Y) * (y - srodekKuli.Y) < 0)
+                        return 0.0;
+
+                    double z = Math.Sqrt(0.25 - (x - srodekKuli.X) * (x - srodekKuli.X) - (y - srodekKuli.Y) * (y - srodekKuli.Y));
+
+                    return Math.Max(0, z);
+                }
+                //if(z < 0)
+                //    return 0;
+                //else
+                //    {
+
+                //    }
             }
             public double[,] GetValues()
             {
@@ -266,13 +286,38 @@ namespace Zadanie2GK
                 for (int i = 0; i <= numberXSegments; i++)
                     for (int j = 0; j <= numberYSegments; j++)
                     {
-                        double h = 0.01;
-                        double zdu = (z(points3[i, j].X + h, points3[i, j].Y) - z(points3[i, j].X, points3[i, j].Y)) / h;
-                        double zdv = (z(points3[i, j].X, points3[i, j].Y + h) - z(points3[i, j].X, points3[i, j].Y)) / h;
-                        Vector3D Pu = new Vector3D(1, 0, zdu);
-                        Vector3D Pv = new Vector3D(0, 1, zdv);
-                        normals[i, j] = Vector3D.CrossProduct(Pu, Pv);
-                        normals[i, j].Normalize();
+
+                        //double z = this.z(points3[i, j].X, points3[i, j].Y);
+                        //if (z == 0)
+                        //    normals[i, j] = new Vector3D(0, 0, 1);
+                        //else
+                        //{
+                        //    Vector3D v = new Vector3D(points3[i, j].X, points3[i, j].Y, z);
+                        //    Vector3D srodekKuli = new Vector3D(0.5, 0.5, 0.0);
+                        //    normals[i, j] = v - srodekKuli; normals[i, j].Normalize();
+                        //}
+                        //if (true)
+                        //{
+                            double h = 0.01;
+                            double zdu = (z(points3[i, j].X + h, points3[i, j].Y) - z(points3[i, j].X, points3[i, j].Y)) / h;
+                            double zdv = (z(points3[i, j].X, points3[i, j].Y + h) - z(points3[i, j].X, points3[i, j].Y)) / h;
+                            Vector3D Pu = new Vector3D(1, 0, zdu);
+                            Vector3D Pv = new Vector3D(0, 1, zdv);
+                            normals[i, j] = Vector3D.CrossProduct(Pu, Pv);
+                            normals[i, j].Normalize();
+                        //}
+                        //else
+                        //{
+                        //    double z = this.z(points3[i, j].X, points3[i, j].Y);
+                        //    if (z == 0)
+                        //        normals[i, j] = new Vector3D(0, 0, 1);
+                        //    else
+                        //    {
+                        //        Vector3D v = new Vector3D(points3[i, j].X, points3[i, j].Y, z);
+                        //        Vector3D srodekKuli = new Vector3D(0.5, 0.5, 0.0);
+                        //        normals[i, j] = v - srodekKuli; normals[i, j].Normalize();
+                        //    }
+                        //}
                     }
                 cachedNormals = normals;
                 return normals;
@@ -333,7 +378,7 @@ namespace Zadanie2GK
                 double green = (kd * loG * cosNL) + (ks * loG * cosVRM);
                 double blue = (kd * loB * cosNL) + (ks * loB * cosVRM);
 
-                return (red, green, blue);
+                return (Math.Min(red, 1), Math.Min(green, 1), Math.Min(blue, 1));
             }
             public (double r, double g, double b) GetColor(Vector3D normal, Vector3D light, Color customColor)
             {
@@ -354,7 +399,7 @@ namespace Zadanie2GK
                 double green = (kd * loG * cosNL) + (ks * loG * cosVRM);
                 double blue = (kd * loB * cosNL) + (ks * loB * cosVRM);
 
-                return (red, green, blue);
+                return (Math.Min(red,1), Math.Min(green, 1), Math.Min(blue, 1));
             }
             double PositiveCos(Vector3D a, Vector3D b)
             {
@@ -374,11 +419,11 @@ namespace Zadanie2GK
 
             bool readFromCache = false;
             (int,int) lastCachedSegments = (-1, -1);
-            Vector3D[,] cachedNormals;
+            public Vector3D[,] cachedNormals;
 
             Color[,] loadedColors;
             public enum NormalMap
-            { None, Multiply, Add }
+            { None, Multiply, Zastąp }
             public Drawer(int width, int height)
             {
                 Drawer.height = height;
@@ -639,13 +684,13 @@ namespace Zadanie2GK
                 else
                 {
                     aproxN = (a * normalVectors[0]) + (b * normalVectors[1]) + (c * normalVectors[2]);
-                    if (mapState != NormalMap.None)
+                    if (mapState != NormalMap.None && bmpNormals != null)
                     {
                         (int x, int y) value = Ind2Bitmap(x, y);
                         switch (mapState)
                         {
-                            case NormalMap.Add:
-                                aproxN += bmpNormals[value.x, value.y];
+                            case NormalMap.Zastąp:
+                                aproxN = bmpNormals[value.x, value.y];
                                 aproxN.Normalize();
                                 break;
                             case NormalMap.Multiply:

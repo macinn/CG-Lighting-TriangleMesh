@@ -58,6 +58,7 @@
             this.resetButton = new System.Windows.Forms.Button();
             this.label11 = new System.Windows.Forms.Label();
             this.zErrorProvider = new System.Windows.Forms.ErrorProvider(this.components);
+            this.labyCheckbox = new System.Windows.Forms.CheckBox();
             this.tableLayoutPanel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.lightRNum)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.lightHNum)).BeginInit();
@@ -99,12 +100,13 @@
             this.tableLayoutPanel1.Controls.Add(this.label10, 0, 13);
             this.tableLayoutPanel1.Controls.Add(this.ksValueNum, 1, 13);
             this.tableLayoutPanel1.Controls.Add(this.zTextBox, 1, 14);
-            this.tableLayoutPanel1.Controls.Add(this.resetButton, 1, 15);
+            this.tableLayoutPanel1.Controls.Add(this.resetButton, 1, 18);
             this.tableLayoutPanel1.Controls.Add(this.label11, 0, 14);
+            this.tableLayoutPanel1.Controls.Add(this.labyCheckbox, 1, 15);
             this.tableLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tableLayoutPanel1.Location = new System.Drawing.Point(0, 0);
             this.tableLayoutPanel1.Name = "tableLayoutPanel1";
-            this.tableLayoutPanel1.RowCount = 16;
+            this.tableLayoutPanel1.RowCount = 19;
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
@@ -120,6 +122,9 @@
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 20F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 20F));
             this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tableLayoutPanel1.Size = new System.Drawing.Size(369, 533);
             this.tableLayoutPanel1.TabIndex = 5;
@@ -451,7 +456,7 @@
             // 
             this.resetButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.resetButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F);
-            this.resetButton.Location = new System.Drawing.Point(122, 431);
+            this.resetButton.Location = new System.Drawing.Point(122, 497);
             this.resetButton.Name = "resetButton";
             this.resetButton.Size = new System.Drawing.Size(244, 47);
             this.resetButton.TabIndex = 17;
@@ -473,6 +478,18 @@
             // zErrorProvider
             // 
             this.zErrorProvider.ContainerControl = this;
+            // 
+            // labyCheckbox
+            // 
+            this.labyCheckbox.AutoSize = true;
+            this.labyCheckbox.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.labyCheckbox.Location = new System.Drawing.Point(122, 431);
+            this.labyCheckbox.Name = "labyCheckbox";
+            this.labyCheckbox.Size = new System.Drawing.Size(244, 20);
+            this.labyCheckbox.TabIndex = 27;
+            this.labyCheckbox.Text = "Rysuj sfere";
+            this.labyCheckbox.UseVisualStyleBackColor = true;
+            this.labyCheckbox.CheckedChanged += new System.EventHandler(this.labyCheckbox_CheckedChanged);
             // 
             // Kontroler
             // 
@@ -527,5 +544,6 @@
         private System.Windows.Forms.TextBox zTextBox;
         private System.Windows.Forms.Label label11;
         private System.Windows.Forms.ErrorProvider zErrorProvider;
+        private System.Windows.Forms.CheckBox labyCheckbox;
     }
 }
