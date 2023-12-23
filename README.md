@@ -1,7 +1,7 @@
 # Lighting-TriangleMesh
 
 ## Abstract
-Using 3rd degree Bazier curves program interpolates plane, traingulates and then draws it using [Lambertian light model](https://en.wikipedia.org/wiki/Lambertian_reflectance) and barycentric aproximation.
+Using 3rd degree Bezier curves program interpolates plane, traingulates and then draws it using [Lambertian light model](https://en.wikipedia.org/wiki/Lambertian_reflectance) and barycentric aproximation.
 
 Mesh is a orthogonal projection (on x-y plane) triangulated 3rd degreee Bazier surface.
 
